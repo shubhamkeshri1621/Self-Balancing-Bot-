@@ -13,7 +13,9 @@
 float kp;
 float kd;
 float ki;
-                         
+float last_error = 0;
+float pid_fn(float pitch); 
+float scaling_(float output);                     
 void uart_init(void)
 {
 	UBRR0H = (BAUDRATE>>8);
@@ -53,6 +55,7 @@ int main(void)
     /* Replace with your application code */
     
 	mpu6050_init();
+	pwm_init();
 	float pitch = 0;
 	//int intdata=179;
 	char data[10] ;
@@ -68,6 +71,7 @@ int main(void)
 	
 	while (1)
 	{
+		
 		mpu6050_getRawData(&ax, &ay, &az, &gx, &gy, &gz);
 		//itoa(ax,data,10);
 		//itoa(ay,data,10);
@@ -84,22 +88,24 @@ int main(void)
 		usart_transmit_string("     ");
 		//uart_transmit('a');
 		//_delay_ms(50);
-		pid(pitch);
+		float Output=pid_fn(pitch);		// scaled output is stored in Output !
+		
+		OCR2 = Output;
 	}
 }
 
 
-void pid(float pitch)
+float pid_fn(float pitch)
 {
 	
-		float current_pitch = 0,last_error = 0,error ,target_pitch = 0,derivative,integral=0,output;
+		float current_pitch = 0,error ,target_pitch = 0,derivative,integral=0,output;
 		current_pitch = pitch ;
 		error = target_pitch - current_pitch ;
 		integral=integral+error;
 		derivative = error - last_error ;
 		output = (kp*error)+ (kd*derivative) + (ki*integral);
 		
-		output=(output/90)*255;
+		output=scaling_(output);
 		
 		if(abs(output)>255)
 		{
@@ -109,13 +115,29 @@ void pid(float pitch)
 		if (pitch>0)
 		{
 			usart_transmit_string("forward");
+			PORTB|=(1<<PINB3);
+			output=output;
+			
 		}
 		else
 		{	
 			usart_transmit_string("backward");
+			PORTB&=(~(1<<PINB3));
+			output=abs(output);
 		}
 		
 		last_error = error ;
+		return output ;
 	
 }
 
+float scaling_(float output)
+{
+	return output=(output/90)*255;	
+}
+
+void pwm_init()
+{
+	TCCR2=(1<<TCCR2)|(1<<WGM20)|(1<<WGM21)|(1<<COM21)|(1<<CS20);
+	DDRB|= (1<<PINB7);
+}
